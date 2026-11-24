@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>مسح حضور الموظفين</title>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; background: #f4f6f9; margin: 0; padding: 15px; }
+    h2 { color: #1e293b; margin-bottom: 12px; }
+    #start-btn { background: #2563eb; color: #fff; border: none; padding: 12px 24px; font-size: 18px; border-radius: 10px; cursor: pointer; margin-bottom: 12px; }
+    #reader { width: 100%; max-width: 400px; min-height: 250px; margin: 0 auto; background: #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    #result-box { margin: 20px auto; max-width: 400px; padding: 20px; border-radius: 12px; font-size: 22px; font-weight: bold; display: none; }
+    .success { background: #dcfce7; color: #166534; border: 2px solid #22c55e; }
+    .duplicate { background: #fef9c3; color: #854d0e; border: 2px solid #eab308; }
+    .error { background: #fee2e2; color: #991b1b; border: 2px solid #ef4444; }
+  </style>
+</head>
+<body>
+  <h2>مسح حضور الموظفين</h2>
+  <button id="start-btn" onclick="startCamera()">تشغيل الكاميرا</button>
+  <div id="reader"></div>
+  <div id="result-box"></div>
+
+  <script>
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz__LHrrNrYq4wLWAsDXzruxpe8bOBOKSYCFmTFMc3StA-J8ow4UWHvnJL0BV0YPREW8A/exec";
+    let isProcessing = false;
+    let html5QrCode = null;
+    const resultBox = document.getElementById('result-box');
+
+    function beep(freq = 800, duration = 150) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        osc.connect(ctx.destination);
+        osc.start();
+        setTimeout(() => osc.stop(), duration);
+      } catch (e) {}
+    }
+
+    function showBanner(type, title, sub = '') {
+      resultBox.className = type;
+      resultBox.innerHTML = title + (sub ? `<div style="font-size:15px; margin-top:6px; font-weight:normal;">${sub}</div>` : '');
+      resultBox.style.display = 'block';
+    }
+
+    function handleResponse(res) {
+      if (!res) {
+        beep(300, 400);
+        showBanner('error', '❌ خطأ', 'لم يتم استلام رد من الشيت.');
+      } else if (res.status === 'success') {
+        beep(950, 180);
+        showBanner('success', '✅ ' + res.name, 'تم التسجيل بنجاح الساعة ' + res.time);
+      } else if (res.status === 'duplicate') {
+        beep(450, 250);
+        showBanner('duplicate', '⚠️ ' + res.name, res.message);
+      } else {
+        beep(300, 400);
+        showBanner('error', '❌ خطأ', res.message);
+      }
+      setTimeout(() => { isProcessing = false; }, 2000);
+    }
+
+    function onScanSuccess(decodedText) {
+      if (isProcessing) return;
+      isProcessing = true;
+      showBanner('duplicate', 'جاري التحقق...', decodedText);
+
+      const scriptTag = document.createElement('script');
+      const sep = WEB_APP_URL.indexOf('?') === -1 ? '?' : '&';
+      scriptTag.src = `${WEB_APP_URL}${sep}empId=${encodeURIComponent(decodedText.trim())}&callback=handleResponse&_=${Date.now()}`;
+      scriptTag.onerror = function() {
+        beep(300, 400);
+        showBanner('error', '❌ خطأ في الاتصال', 'تأكد من نشر Web App بصلاحية Anyone.');
+        setTimeout(() => { isProcessing = false; }, 2000);
+      };
+      document.body.appendChild(scriptTag);
+    }
+
+    function startCamera() {
+      if (typeof Html5Qrcode === 'undefined') {
+        showBanner('error', '❌ تعذر تحميل مكتبة الكاميرا', 'تحقق من اتصال الإنترنت.');
+        return;
+      }
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+      }
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 240, height: 240 } },
+        onScanSuccess
+      ).then(() => {
+        document.getElementById('start-btn').style.display = 'none';
+      }).catch(err => {
+        showBanner('error', '❌ لم يتم فتح الكاميرا', String(err));
+      });
+    }
+  </script>
+</body>
+</html>
